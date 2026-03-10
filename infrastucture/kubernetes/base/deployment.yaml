@@ -1,0 +1,217 @@
+# infrastructure/kubernetes/base/deployment.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator-api
+  namespace: security-orchestrator
+  labels:
+    app: orchestrator
+    component: api
+    version: v1
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: orchestrator
+      component: api
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+        component: api
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+        sidecar.istio.io/inject: "true"
+    spec:
+      serviceAccountName: orchestrator-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+      containers:
+      - name: api
+        image: ghcr.io/security-orchestrator/api:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+        - containerPort: 9090
+          name: metrics
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: orchestrator-config
+              key: environment
+        - name: POSTGRES_DSN
+          valueFrom:
+            secretKeyRef:
+              name: orchestrator-secrets
+              key: postgres-dsn
+        - name: REDIS_DSN
+          valueFrom:
+            secretKeyRef:
+              name: orchestrator-secrets
+              key: redis-dsn
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: orchestrator-secrets
+              key: jwt-secret
+        - name: FIELD_ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: orchestrator-secrets
+              key: encryption-key
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+        - name: tmp
+          mountPath: /tmp
+        - name: logs
+          mountPath: /var/log
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: config
+        configMap:
+          name: orchestrator-config
+      - name: tmp
+        emptyDir: {}
+      - name: logs
+        emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - orchestrator
+              topologyKey: kubernetes.io/hostname
+      tolerations:
+      - key: "dedicated"
+        operator: "Equal"
+        value: "orchestrator"
+        effect: "NoSchedule"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator-api
+  namespace: security-orchestrator
+  labels:
+    app: orchestrator
+    component: api
+spec:
+  selector:
+    app: orchestrator
+    component: api
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: orchestrator-api
+  namespace: security-orchestrator
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: orchestrator-api
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: http_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: 1000
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 4
+        periodSeconds: 15
+      selectPolicy: Max
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: orchestrator-api
+  namespace: security-orchestrator
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: orchestrator
+      component: api

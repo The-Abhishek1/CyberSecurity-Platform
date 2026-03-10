@@ -1,0 +1,130 @@
+{
+  "dashboard": {
+    "title": "Security Orchestrator - API Dashboard",
+    "uid": "api-dashboard",
+    "tags": ["security", "orchestrator"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "title": "API Request Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total[5m])) by (method)",
+            "legendFormat": "{{ method }}"
+          }
+        ],
+        "yaxes": [
+          {"format": "reqps", "label": "Requests/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "title": "API Error Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m])) * 100",
+            "legendFormat": "Error %"
+          }
+        ],
+        "yaxes": [
+          {"format": "percent", "label": "Error Rate"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "title": "API Latency (P95)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+            "legendFormat": "P95 Latency"
+          }
+        ],
+        "yaxes": [
+          {"format": "s", "label": "Latency"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "title": "Active Executions",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 4, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "sum(active_executions)",
+            "legendFormat": "Active Executions"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "center",
+          "orientation": "auto",
+          "reduceOptions": {
+            "calcs": ["lastNotNull"],
+            "fields": "",
+            "values": false
+          },
+          "textMode": "auto"
+        }
+      },
+      {
+        "title": "Worker Pool Status",
+        "type": "table",
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+        "targets": [
+          {
+            "expr": "workers_active",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "columns": [
+          {"text": "Tool", "value": "tool"},
+          {"text": "Active", "value": "Value"},
+          {"text": "Total", "value": "total"}
+        ]
+      },
+      {
+        "title": "Database Connections",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+        "targets": [
+          {
+            "expr": "pg_stat_database_numbackends{datname!~\"template.*|postgres\"}",
+            "legendFormat": "{{ datname }}"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Connections"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "title": "Redis Memory Usage",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+        "targets": [
+          {
+            "expr": "redis_memory_used_bytes / redis_memory_max_bytes * 100",
+            "legendFormat": "Memory Usage %"
+          }
+        ],
+        "yaxes": [
+          {"format": "percent", "label": "Usage", "max": 100},
+          {"format": "short"}
+        ]
+      }
+    ],
+    "refresh": "30s",
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    }
+  }
+}

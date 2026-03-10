@@ -1,0 +1,131 @@
+# infrastructure/kubernetes/base/worker.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator-worker
+  namespace: security-orchestrator
+  labels:
+    app: orchestrator
+    component: worker
+spec:
+  replicas: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: orchestrator
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+        component: worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      serviceAccountName: worker-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+      containers:
+      - name: worker
+        image: ghcr.io/security-orchestrator/worker:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 9090
+          name: metrics
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: orchestrator-config
+              key: environment
+        - name: REDIS_DSN
+          valueFrom:
+            secretKeyRef:
+              name: orchestrator-secrets
+              key: redis-dsn
+        - name: RABBITMQ_DSN
+          valueFrom:
+            secretKeyRef:
+              name: orchestrator-secrets
+              key: rabbitmq-dsn
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "4000m"
+        volumeMounts:
+        - name: docker-socket
+          mountPath: /var/run/docker.sock
+        - name: tmp
+          mountPath: /tmp
+        securityContext:
+          privileged: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: docker-socket
+        hostPath:
+          path: /var/run/docker.sock
+          type: Socket
+      - name: tmp
+        emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: component
+                operator: In
+                values:
+                - worker
+            topologyKey: kubernetes.io/hostname
+      nodeSelector:
+        node-type: worker
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: orchestrator-worker
+  namespace: security-orchestrator
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: orchestrator-worker
+  minReplicas: 5
+  maxReplicas: 50
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: External
+    external:
+      metric:
+        name: queue_depth
+        selector:
+          matchLabels:
+            queue: tasks
+      target:
+        type: AverageValue
+        averageValue: 100

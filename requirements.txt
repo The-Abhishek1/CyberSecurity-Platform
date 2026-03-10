@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+sqlalchemy
+alembic 
+asyncpg 
+redis 
+aio-pika
+python-jose[cryptography] 
+passlib[bcrypt] 
+python-multipart
+pydantic pydantic-settings python-dotenv

@@ -1,0 +1,34 @@
+# 1. Clone and setup
+git clone <your-repo>
+cd enterprise-security-orchestrator
+chmod +x setup.sh
+./setup.sh
+
+# 2. Start infrastructure services
+docker-compose up -d postgres redis rabbitmq
+
+# 3. Run database migrations
+alembic upgrade head
+
+# 4. Generate test data
+python scripts/generate_test_data.py
+
+# 5. Start the API
+uvicorn src.api.app:app --reload --port 8000
+
+# 6. In another terminal, run tests
+pytest tests/ -v
+
+# 7. Try an example scan
+python examples/basic_scan.py
+
+# 8. Check monitoring
+open http://localhost:3000  # Grafana (admin/admin)
+open http://localhost:9090  # Prometheus
+open http://localhost:15672 # RabbitMQ (guest/guest)
+
+# 9. Run performance test
+locust -f tests/performance/locustfile.py
+
+# 10. Stop everything
+docker-compose down

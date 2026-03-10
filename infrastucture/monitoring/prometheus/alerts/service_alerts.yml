@@ -1,0 +1,102 @@
+# infrastructure/monitoring/prometheus/alerts/service_alerts.yml
+
+groups:
+  - name: service_alerts
+    interval: 30s
+    rules:
+      - alert: APIHighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m])) 
+          / 
+          sum(rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "API high error rate"
+          description: "Error rate is {{ $value | humanizePercentage }} for the last 5 minutes"
+          runbook_url: "https://wiki/runbooks/api-high-error-rate"
+
+      - alert: APILatencyHigh
+        expr: |
+          histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+          > 2
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "API latency is high"
+          description: "P95 latency is {{ $value }}s for the last 5 minutes"
+
+      - alert: WorkerQueueDepth
+        expr: rabbitmq_queue_messages{queue="tasks"} > 1000
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Worker queue depth is high"
+          description: "Queue has {{ $value }} messages pending"
+
+      - alert: WorkerHighFailureRate
+        expr: |
+          sum(rate(task_failures_total[10m])) > 10
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "High worker failure rate"
+          description: "Workers are failing at rate of {{ $value }} failures/10m"
+
+      - alert: DatabaseConnectionsHigh
+        expr: pg_stat_database_numbackends > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: dba
+        annotations:
+          summary: "High database connections"
+          description: "Database has {{ $value }} active connections"
+
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: dba
+        annotations:
+          summary: "Redis memory usage high"
+          description: "Redis is using {{ $value | humanizePercentage }} of max memory"
+
+      - alert: CertificateExpiring
+        expr: cert_exporter_cert_expires_in_seconds < 604800
+        for: 1h
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "TLS certificate expiring soon"
+          description: "Certificate expires in {{ $value | humanizeDuration }}"
+
+      - alert: DiskSpaceLow
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.1
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Low disk space"
+          description: "Disk is {{ $value | humanizePercentage }} full"
+
+      - alert: PodRestarting
+        expr: increase(kube_pod_container_status_restarts_total[15m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Pod is restarting frequently"
+          description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in 15m"

@@ -1,0 +1,16 @@
+# Health check
+curl http://localhost:8000/health
+
+# Submit a scan
+curl -X POST http://localhost:8000/api/v1/execute \
+  -H "Content-Type: application/json" \
+  -d '{"goal": "Scan example.com", "target": "example.com"}'
+
+# Check status (replace with your process_id)
+curl http://localhost:8000/api/v1/status/proc_abc123
+
+# List executions
+curl http://localhost:8000/api/v1/list
+
+# Get metrics
+curl http://localhost:8000/metrics

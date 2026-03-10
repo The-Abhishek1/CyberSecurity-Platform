@@ -1,0 +1,146 @@
+# infrastructure/service-mesh/istio/gateway.yaml
+
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: orchestrator-gateway
+  namespace: security-orchestrator
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "api.security-orchestrator.com"
+    - "*.security-orchestrator.com"
+    tls:
+      httpsRedirect: true
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    hosts:
+    - "api.security-orchestrator.com"
+    - "*.security-orchestrator.com"
+    tls:
+      mode: SIMPLE
+      credentialName: orchestrator-tls-cert
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: orchestrator
+  namespace: security-orchestrator
+spec:
+  hosts:
+  - "api.security-orchestrator.com"
+  gateways:
+  - orchestrator-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /api/v1
+    route:
+    - destination:
+        host: orchestrator-api
+        port:
+          number: 80
+      weight: 90
+    - destination:
+        host: orchestrator-api-canary
+        port:
+          number: 80
+      weight: 10
+    retries:
+      attempts: 3
+      perTryTimeout: 2s
+      retryOn: gateway-error,connect-failure,refused-stream
+    timeout: 30s
+    corsPolicy:
+      allowOrigins:
+      - exact: https://app.security-orchestrator.com
+      allowMethods:
+      - POST
+      - GET
+      - PUT
+      - DELETE
+      allowCredentials: true
+      allowHeaders:
+      - authorization
+      - content-type
+      maxAge: 24h
+  - match:
+    - uri:
+        prefix: /metrics
+    route:
+    - destination:
+        host: prometheus-operated.monitoring
+        port:
+          number: 9090
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: orchestrator
+  namespace: security-orchestrator
+spec:
+  host: orchestrator-api
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 10
+        http2MaxRequests: 1000
+        maxRequestsPerConnection: 10
+    loadBalancer:
+      simple: ROUND_ROBIN
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: security-orchestrator
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: orchestrator-authz
+  namespace: security-orchestrator
+spec:
+  selector:
+    matchLabels:
+      app: orchestrator
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        namespaces: ["istio-system"]
+    to:
+    - operation:
+        ports: ["9090"]
+  - from:
+    - source:
+        requestPrincipals: ["*"]
+    to:
+    - operation:
+        methods: ["POST", "GET", "PUT", "DELETE"]
+        paths: ["/api/v1/*"]
