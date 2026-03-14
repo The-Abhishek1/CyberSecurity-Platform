@@ -9,7 +9,7 @@ from src.tenant.isolation.network_isolation import NetworkIsolation
 from src.tenant.billing.usage_aggregator import UsageAggregator
 from src.tenant.billing.billing_calculator import BillingCalculator
 from src.utils.logging import logger
-
+from enum import Enum
 
 class TenantStatus(str, Enum):
     ACTIVE = "active"
@@ -69,8 +69,8 @@ class TenantManager:
     async def create_tenant(
         self,
         name: str,
-        tier: TenantTier = TenantTier.BASIC,
         admin_email: str,
+        tier: TenantTier = TenantTier.BASIC,
         settings: Optional[Dict] = None
     ) -> Dict:
         """Create new tenant"""

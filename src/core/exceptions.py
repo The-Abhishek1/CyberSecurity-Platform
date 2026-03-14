@@ -214,3 +214,28 @@ def enterprise_exception_handler(request, exc: EnterpriseBaseException):
             }
         }
     )
+
+class QuotaExceededError(Exception):
+    """Raised when quota limits are exceeded"""
+
+    def __init__(self, message: str, quota_type: str | None = None):
+        self.message = message
+        self.quota_type = quota_type
+        super().__init__(message)
+        
+
+class WorkerExecutionError(EnterpriseBaseException):
+    """Worker execution failed"""
+
+    def __init__(
+        self,
+        message: str,
+        worker_id: str,
+        details: Optional[Dict[str, Any]] = None
+    ):
+        super().__init__(
+            message=message,
+            code="WORKER_EXECUTION_ERROR",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            details={**(details or {}), "worker_id": worker_id}
+        )

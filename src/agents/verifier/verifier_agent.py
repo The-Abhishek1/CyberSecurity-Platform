@@ -6,7 +6,7 @@ from src.agents.verifier.capability_validator import CapabilityValidator
 from src.models.dag import DAG, TaskNode, AgentCapability
 from src.utils.logging import logger
 from src.core.exceptions import DAGValidationError
-
+from datetime import datetime
 
 class VerifierAgent(BaseAgent):
     """
@@ -191,3 +191,17 @@ class VerifierAgent(BaseAgent):
                 )
         
         return suggestions
+    
+    async def execute(self, task: Dict[str, Any]) -> Any:
+        """
+        Execute verification task
+        """
+
+        dag = task.get("dag")
+        user_id = task.get("user_id")
+        tenant_id = task.get("tenant_id")
+
+        if not dag:
+            raise ValueError("VerifierAgent requires a DAG")
+
+        return await self.validate_dag(dag, user_id, tenant_id)

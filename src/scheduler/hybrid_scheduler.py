@@ -22,6 +22,18 @@ from src.core.exceptions import (
 
 settings = get_settings()
 
+# Global singleton instance
+_scheduler_instance = None
+
+def get_scheduler_instance():
+    """Get the singleton scheduler instance"""
+    return _scheduler_instance
+
+def set_scheduler_instance(instance):
+    """Set the singleton scheduler instance"""
+    global _scheduler_instance
+    _scheduler_instance = instance
+
 
 class HybridScheduler:
     """
@@ -56,14 +68,25 @@ class HybridScheduler:
         self.task_queue = asyncio.Queue()
         self.executor = ThreadPoolExecutor(max_workers=settings.workers)
         
-        logger.info("Hybrid Scheduler initialized")
+        # Orchestrator reference (will be set later)
+        self.orchestrator = None
+        
+        # Register this instance as the singleton
+        set_scheduler_instance(self)
+        
+        logger.info(f"Hybrid Scheduler initialized (ID: {id(self)})")
+    
+    def set_orchestrator(self, orchestrator):
+        """Set orchestrator reference"""
+        self.orchestrator = orchestrator
+        logger.info(f"🔗 Scheduler {id(self)} connected to orchestrator {id(orchestrator)}")
     
     async def schedule_execution(
         self,
         goal: str,
-        target: Optional[str] = None,
         user_id: str,
         tenant_id: str,
+        target: Optional[str] = None,
         budget_limit: Optional[float] = None,
         priority: str = "medium",
         parameters: Optional[Dict[str, Any]] = None
@@ -160,6 +183,7 @@ class HybridScheduler:
             
             # Call planner agent
             dag = await self.planner_agent.create_plan(
+                process_id=process_id,
                 goal=goal,
                 target=target,
                 user_id=user_id,
@@ -197,11 +221,6 @@ class HybridScheduler:
             self.active_executions[process_id]["dag"] = validated_dag
             self.active_executions[process_id]["status"] = "ready"
             
-            # Start execution phase
-            asyncio.create_task(
-                self._execute_execution_phase(process_id)
-            )
-            
             logger.info(
                 f"Planning completed for {process_id}",
                 extra={
@@ -209,6 +228,11 @@ class HybridScheduler:
                     "total_tasks": validated_dag.total_tasks,
                     "estimated_cost": validated_dag.estimated_total_cost
                 }
+            )
+            
+            # Start execution phase immediately
+            asyncio.create_task(
+                self._execute_execution_phase(process_id)
             )
             
         except Exception as e:
@@ -226,23 +250,28 @@ class HybridScheduler:
     async def _execute_execution_phase(self, process_id: str):
         """Execute the execution phase of the DAG"""
         
+        logger.info(f"🔵 EXECUTION PHASE STARTED for {process_id}")
+        
         try:
             execution = self.active_executions.get(process_id)
             if not execution:
-                raise ValueError(f"Execution {process_id} not found")
+                logger.error(f"❌ Execution {process_id} not found")
+                return
             
             dag = execution["dag"]
+            logger.info(f"📋 DAG has {dag.total_tasks} tasks")
             
             # Update status
             await self._update_execution_status(process_id, "executing")
             
             # Get execution order
             execution_order = dag.get_execution_order()
+            logger.info(f"📊 Execution order: {execution_order}")
             
             # Execute each level in parallel
             for level, task_ids in enumerate(execution_order):
                 logger.info(
-                    f"Executing level {level} for {process_id}",
+                    f"▶️ Executing level {level} for {process_id} with tasks: {task_ids}",
                     extra={
                         "process_id": process_id,
                         "level": level,
@@ -256,12 +285,15 @@ class HybridScheduler:
                     task = dag.nodes[task_id]
                     task.status = TaskStatus.RUNNING
                     
+                    logger.info(f"  🔧 Starting task: {task.name}")
+                    
                     # Create task context
                     context = await self.context_manager.create_context(
                         process_id=process_id,
                         task_id=task_id,
                         user_id=execution["user_id"],
-                        tenant_id=execution["tenant_id"]
+                        tenant_id=execution["tenant_id"],
+                        inputs=task.parameters
                     )
                     
                     # Submit task for execution
@@ -275,15 +307,15 @@ class HybridScheduler:
                 # Process results
                 for task_id, result in zip(task_ids, results):
                     if isinstance(result, Exception):
-                        # Handle task failure
-                        dag.nodes[task_id].status = TaskStatus.FAILED
+                        logger.error(f"❌ Task {task_id} failed: {result}")
+                        dag.nodes[task_id].status = "failed"
                         dag.nodes[task_id].error = {"message": str(result)}
                         
                         # Check if we should stop execution
                         if not await self._should_continue_on_error(process_id):
                             raise result
                     else:
-                        # Task succeeded
+                        logger.info(f"✅ Task {task_id} completed successfully")
                         dag.nodes[task_id].status = TaskStatus.COMPLETED
                         dag.nodes[task_id].result = result
                         
@@ -297,11 +329,12 @@ class HybridScheduler:
                 await self.memory_service.update_dag(dag)
             
             # Execution completed
+            logger.info(f"🎉 All tasks completed for {process_id}")
             await self._complete_execution(process_id)
             
         except Exception as e:
             logger.error(
-                f"Execution failed for {process_id}: {str(e)}",
+                f"❌ Execution failed for {process_id}: {str(e)}",
                 extra={
                     "process_id": process_id,
                     "error": str(e)
@@ -317,40 +350,44 @@ class HybridScheduler:
         context: TaskContext,
         process_id: str
     ) -> Dict[str, Any]:
-        """Execute a single task"""
+        """
+        Execute a single task using the orchestrator
+        Orchestrator will route to appropriate agent
+        """
         
         logger.info(
-            f"Executing task {task.task_id}",
+            f"🚀 Scheduler routing task {task.name} to orchestrator",
             extra={
                 "process_id": process_id,
-                "task_id": task.task_id,
-                "task_name": task.name
+                "task_id": task.task_id
             }
         )
         
         task.start_time = datetime.utcnow()
         
         try:
-            # In Phase 3, this will route to appropriate agent/tool
-            # For now, simulate task execution
-            await asyncio.sleep(2)  # Simulate work
+            if not self.orchestrator:
+                # Try to get orchestrator from app state? 
+                # This shouldn't happen if connection worked
+                logger.error(f"❌ Orchestrator not connected to scheduler {id(self)}")
+                raise Exception("Orchestrator not connected to scheduler")
             
-            result = {
-                "status": "success",
-                "data": {
-                    "task_id": task.task_id,
-                    "findings": [
-                        {"type": "info", "message": f"Task {task.name} completed"}
-                    ]
+            # Let orchestrator handle the task routing
+            result = await self.orchestrator.route_task_to_agent(
+                task=task,
+                context={
+                    "process_id": process_id,
+                    "user_id": context.user_id,
+                    "tenant_id": context.tenant_id,
+                    "inputs": context.inputs,
+                    "execution_id": f"exec_{uuid.uuid4().hex[:8]}"
                 }
-            }
-            
-            # Simulate cost
-            task.actual_cost = task.estimated_cost * 0.9
+            )
             
             task.end_time = datetime.utcnow()
+            task.actual_cost = task.estimated_cost * 0.9  # Calculate actual
             
-            # Store in memory
+            # Store result
             await self.memory_service.store_task_result(
                 task_id=task.task_id,
                 process_id=process_id,
@@ -362,11 +399,8 @@ class HybridScheduler:
         except Exception as e:
             task.end_time = datetime.utcnow()
             task.status = TaskStatus.FAILED
-            raise AgentExecutionError(
-                message=f"Task {task.name} failed: {str(e)}",
-                agent="unknown",
-                task=task.task_id
-            )
+            logger.error(f"❌ Task execution failed: {e}")
+            raise
     
     async def _should_continue_on_error(self, process_id: str) -> bool:
         """Determine if execution should continue after error"""
@@ -391,7 +425,7 @@ class HybridScheduler:
             await self.memory_service.store_execution_result(
                 process_id=process_id,
                 result={
-                    "status": "completed",
+                    "status": TaskStatus.COMPLETED,
                     "total_cost": total_cost,
                     "completed_at": execution["completed_at"].isoformat()
                 }

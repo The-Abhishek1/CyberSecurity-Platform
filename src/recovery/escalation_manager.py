@@ -187,19 +187,23 @@ class EscalationManager:
             logger.info(f"Escalation {escalation_id} resolved: {resolution}")
     
     async def _notify_log(self, escalation: Dict, step: Dict) -> bool:
-        """Log notification"""
+        """Log the escalation"""
+        # Don't use 'message' as an extra key - it conflicts with LogRecord
+        log_data = {
+            "escalation_id": escalation.get("id"),
+            "level": step.get("level"),
+            "channel": step.get("channel"),
+            "timestamp": datetime.utcnow().isoformat()
+        }
         
+        # Use a different key for the message
         logger.warning(
-            f"ESCALATION NOTIFICATION: {escalation['level']} - {escalation['component']}",
-            extra={
-                "escalation_id": escalation["id"],
-                "message": escalation["message"],
-                "context": escalation["context"]
-            }
+            f"Escalation triggered: {step.get('message', 'No message')}",
+            extra={"escalation_data": log_data}
         )
-        
         return True
-    
+
+
     async def _notify_email(self, escalation: Dict, step: Dict) -> bool:
         """Send email notification"""
         

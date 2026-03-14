@@ -7,7 +7,8 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 import xgboost as xgb
 import tensorflow as tf
 from tensorflow import keras
-
+from src.ai.model_manager import ModelManager
+from src.ai.feature_store import FeatureStore
 
 class TrainingPipeline:
     """

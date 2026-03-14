@@ -1,25 +1,28 @@
 # docker/workers/base/Dockerfile
-FROM python:3.11-slim as base
+FROM alpine:3.19
 
-# Install common dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install common utilities that might be needed
+RUN apk add --no-cache \
+    bash \
     curl \
     wget \
-    git \
     ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && update-ca-certificates
 
-# Create non-root user
-RUN useradd -m -u 1000 worker && mkdir -p /home/worker/work && chown -R worker:worker /home/worker
+# Create a non-root user that will be used by all worker images
+RUN addgroup -g 1000 -S worker && \
+    adduser -u 1000 -S worker -G worker
+
+# Create working directory with proper permissions
+RUN mkdir -p /home/worker && \
+    chown -R worker:worker /home/worker
 
 # Set working directory
-WORKDIR /home/worker/work
-
-# Copy worker entrypoint
-COPY docker/workers/base/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+WORKDIR /home/worker
 
 # Switch to non-root user
 USER worker
 
-ENTRYPOINT ["/entrypoint.sh"]
+# Default command - keeps container running so we can exec commands
+# This is crucial for worker containers to stay alive
+CMD ["tail", "-f", "/dev/null"]

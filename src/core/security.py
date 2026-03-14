@@ -4,7 +4,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import base64
 import secrets
 import pyotp
@@ -34,7 +34,7 @@ class SecurityService:
         """Initialize field-level encryption"""
         key = settings.encryption.field_encryption_key.get_secret_value()
         # Derive a proper Fernet key
-        kdf = PBKDF2(
+        kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
             salt=b"fixed_salt_please_change",  # In production, use a secure random salt per deployment

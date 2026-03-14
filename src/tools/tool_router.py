@@ -56,7 +56,7 @@ class ToolRouter:
     
     async def route_and_execute(
         self,
-        task: Any,
+        task: Any,  # This MUST be the first parameter
         params: Dict[str, Any],
         user_id: str,
         tenant_id: str,
@@ -75,6 +75,7 @@ class ToolRouter:
         Returns:
             Tool execution result
         """
+        logger.info(f"🛠️ ToolRouter executing task: {task.name if hasattr(task, 'name') else 'unknown'}")
         
         # Get required capability
         required_capability = task.required_capabilities[0] if task.required_capabilities else None
@@ -87,7 +88,7 @@ class ToolRouter:
         
         # Find suitable tools
         available_tools = await self.tool_registry.find_tools_by_capability(
-            capability=required_capability,
+            capability=required_capability.value if hasattr(required_capability, 'value') else required_capability,
             tenant_id=tenant_id
         )
         
@@ -96,13 +97,6 @@ class ToolRouter:
                 message=f"No tool found for capability: {required_capability}",
                 tool="unknown"
             )
-        
-        # Check rate limits
-        await self.rate_limiter.check_limits(
-            user_id=user_id,
-            tenant_id=tenant_id,
-            tools=available_tools
-        )
         
         # Check cache
         cache_key = self._generate_cache_key(task, params)
@@ -377,3 +371,5 @@ class ToolRouter:
         """Random load balancing"""
         import random
         return random.choice(tools)
+    
+    

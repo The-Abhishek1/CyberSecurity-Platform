@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: security-orchestrator-api
+  namespace: security
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: security-orchestrator
+      component: api
+  template:
+    metadata:
+      labels:
+        app: security-orchestrator
+        component: api
+    spec:
+      serviceAccountName: security-orchestrator
+      containers:
+      - name: api
+        image: security-orchestrator/api:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: orchestrator-config
+              key: environment
+        - name: POSTGRES_DSN
+          valueFrom:
+            secretKeyRef:
+              name: orchestrator-secrets
+              key: postgres-dsn
+        - name: REDIS_DSN
+          valueFrom:
+            secretKeyRef:
+              name: orchestrator-secrets
+              key: redis-dsn
+        - name: DOCKER_HOST
+          value: "unix:///var/run/docker.sock"
+        volumeMounts:
+        - name: docker-socket
+          mountPath: /var/run/docker.sock
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: docker-socket
+        hostPath:
+          path: /var/run/docker.sock
+          type: Socket
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: security-orchestrator-api
+  namespace: security
+spec:
+  selector:
+    app: security-orchestrator
+    component: api
+  ports:
+  - port: 80
+    targetPort: 8000
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: security-orchestrator-api
+  namespace: security
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: security-orchestrator-api
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70

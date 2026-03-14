@@ -1,7 +1,7 @@
 from typing import Dict, Any, List, Optional
 import re
 import hashlib
-
+from enum import Enum
 
 class DataClassificationLevel(str, Enum):
     PUBLIC = "public"

@@ -14,6 +14,8 @@ from src.memory.memory_service import MemoryService
 from src.core.config import get_settings
 from src.utils.logging import logger
 from src.core.exceptions import AgentExecutionError, ToolExecutionError
+from src.agents.collaboration.memory_bus import AgentMemoryBus
+from src.domain_agents.base_domain_agent import BaseDomainAgent
 
 settings = get_settings()
 
@@ -28,6 +30,7 @@ class AgentOrchestrator:
     - Handles agent communication
     - Tracks execution state
     - Coordinates with tool router and workers
+    - Connects scheduler with domain agents
     """
     
     def __init__(
@@ -35,17 +38,25 @@ class AgentOrchestrator:
         memory_service: MemoryService,
         tool_router: ToolRouter,
         worker_pool: WorkerPool,
-        retry_manager: RetryManager
+        retry_manager: RetryManager,
+        memory_bus: Optional[AgentMemoryBus] = None
     ):
         self.memory_service = memory_service
         self.tool_router = tool_router
         self.worker_pool = worker_pool
         self.retry_manager = retry_manager
+        self.memory_bus = memory_bus or AgentMemoryBus(memory_service)
         self.state_manager = StateManager()
         self.communication_bus = CommunicationBus()
         
         # Domain agents registry
-        self.domain_agents: Dict[str, Any] = {}
+        self.domain_agents: Dict[str, BaseDomainAgent] = {}
+        
+        # Scheduler reference (will be set later)
+        self.scheduler = None
+        
+        # Agent performance tracking
+        self.agent_performance: Dict[str, Dict] = {}
         
         # Active executions
         self.active_executions: Dict[str, Dict[str, Any]] = {}
@@ -53,12 +64,27 @@ class AgentOrchestrator:
         # Task queues per execution
         self.task_queues: Dict[str, asyncio.Queue] = {}
         
-        logger.info("Agent Orchestrator initialized")
+        logger.info("🏢 Enterprise Agent Orchestrator initialized")
     
-    async def register_domain_agent(self, agent_type: str, agent_instance: Any):
+    def connect_scheduler(self, scheduler):
+        """Connect scheduler to orchestrator"""
+        self.scheduler = scheduler
+        if hasattr(scheduler, 'set_orchestrator'):
+            scheduler.set_orchestrator(self)
+        logger.info("🔗 Scheduler connected to orchestrator")
+    
+    async def register_domain_agent(self, agent_type: str, agent_instance: BaseDomainAgent):
         """Register a domain agent with the orchestrator"""
         self.domain_agents[agent_type] = agent_instance
-        logger.info(f"Registered domain agent: {agent_type}")
+        
+        # Subscribe agent to relevant topics
+        if self.memory_bus:
+            await self.memory_bus.subscribe(
+                agent_type,
+                [f"agent:{agent_type}", "agent:all", "task:completed"]
+            )
+        
+        logger.info(f"✅ Registered domain agent: {agent_type}")
     
     async def execute_dag(
         self,
@@ -134,20 +160,23 @@ class AgentOrchestrator:
                         "start_time": datetime.utcnow()
                     }
                     
-                    # Create task execution coroutine
+                    # Create task execution coroutine - now uses route_task_to_agent
                     level_tasks.append(
-                        self._execute_task(
-                            execution_id=execution_id,
+                        self.route_task_to_agent(
                             task=task,
-                            dag=dag,
-                            user_id=user_id,
-                            tenant_id=tenant_id,
-                            context=context
+                            context={
+                                "execution_id": execution_id,
+                                "process_id": process_id,
+                                "user_id": user_id,
+                                "tenant_id": tenant_id,
+                                "inputs": task.parameters,
+                                "dag_context": context
+                            }
                         )
                     )
                 
-                # Execute level tasks in parallel with semaphore for concurrency control
-                semaphore = asyncio.Semaphore(settings.max_concurrent_tasks_per_level)
+                # Execute level tasks in parallel
+                semaphore = asyncio.Semaphore(getattr(settings, 'max_concurrent_tasks_per_level', 5))
                 
                 async def execute_with_semaphore(task_coro):
                     async with semaphore:
@@ -242,87 +271,195 @@ class AgentOrchestrator:
             # Cleanup
             await self._cleanup_execution(execution_id)
     
-    async def _execute_task(
+    async def route_task_to_agent(
         self,
-        execution_id: str,
         task: TaskNode,
-        dag: DAG,
-        user_id: str,
-        tenant_id: str,
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Execute a single task"""
+        """
+        Route a task to the most appropriate agent
+        This is the main entry point for task execution
+        """
         
-        logger.info(
-            f"Executing task: {task.name} ({task.task_id})",
-            extra={
-                "execution_id": execution_id,
-                "task_id": task.task_id,
-                "task_type": task.task_type.value
-            }
+        logger.info(f"🔄 Routing task {task.name} to appropriate agent")
+        
+        # Find best agent for this task
+        best_agent = None
+        best_score = -1
+        
+        for agent_type, agent in self.domain_agents.items():
+            score = await self._score_agent_for_task(agent, task, context)
+            if score > best_score:
+                best_score = score
+                best_agent = agent
+        
+        if best_agent:
+            logger.info(f"✅ Selected agent {best_agent.agent_type} (score: {best_score})")
+            
+            try:
+                # Execute task with selected agent
+                result = await best_agent.execute(
+                    task=task,
+                    inputs=context.get("inputs", {}),
+                    context={
+                        "execution_id": context.get("execution_id"),
+                        "user_id": context.get("user_id"),
+                        "tenant_id": context.get("tenant_id"),
+                        "process_id": context.get("process_id"),
+                        "orchestrator": self
+                    }
+                )
+                
+                # Track performance
+                await self._track_agent_performance(best_agent, task, result)
+                
+                return result
+                
+            except Exception as e:
+                logger.error(f"❌ Agent {best_agent.agent_type} failed: {e}")
+                # Try fallback
+                return await self._fallback_execution(task, context, best_agent)
+        
+        # No suitable agent found, use tool router directly
+        logger.warning("⚠️ No suitable agent found, using direct tool execution")
+        return await self._execute_with_tools(
+            task=task,
+            inputs=context.get("inputs", {}),
+            user_id=context.get("user_id"),
+            tenant_id=context.get("tenant_id"),
+            execution_id=context.get("execution_id")
+        )
+    
+    async def _score_agent_for_task(
+        self,
+        agent: BaseDomainAgent,
+        task: TaskNode,
+        context: Dict
+    ) -> float:
+        """Score how suitable an agent is for a task"""
+        
+        score = 0.0
+        
+        # Check capability match
+        required_caps = set(task.required_capabilities)
+        agent_caps = set(agent.capabilities)
+        
+        if required_caps.issubset(agent_caps):
+            score += 50.0
+        else:
+            match_count = len(required_caps.intersection(agent_caps))
+            score += match_count * 10
+        
+        # Check past performance
+        perf = self.agent_performance.get(agent.agent_id, {})
+        success_rate = perf.get("success_rate", 0.5)
+        score += success_rate * 30
+        
+        # Check current load
+        current_tasks = len([e for e in self.active_executions.values() 
+                            if e.get("agent") == agent.agent_id])
+        if current_tasks < 3:
+            score += 20
+        elif current_tasks < 5:
+            score += 10
+        
+        return score
+    
+    async def _fallback_execution(
+        self,
+        task: TaskNode,
+        context: Dict,
+        failed_agent: BaseDomainAgent
+    ) -> Dict:
+        """Fallback execution when primary agent fails"""
+        
+        logger.info(f"🔄 Attempting fallback execution for task {task.name}")
+        
+        # Try other agents
+        for agent_type, agent in self.domain_agents.items():
+            if agent == failed_agent:
+                continue
+            
+            try:
+                result = await agent.execute(
+                    task=task,
+                    inputs=context.get("inputs", {}),
+                    context=context
+                )
+                logger.info(f"✅ Fallback agent {agent_type} succeeded")
+                return result
+            except Exception:
+                continue
+        
+        # Last resort: direct tool execution
+        logger.warning("⚠️ All agents failed, using direct tool execution")
+        return await self._execute_with_tools(
+            task=task,
+            inputs=context.get("inputs", {}),
+            user_id=context.get("user_id"),
+            tenant_id=context.get("tenant_id"),
+            execution_id=context.get("execution_id")
+        )
+    
+    async def _execute_with_tools(
+        self,
+        task: TaskNode,
+        inputs: Dict[str, Any],
+        user_id: str,
+        tenant_id: str,
+        execution_id: str
+    ) -> Dict[str, Any]:
+        """Execute task directly using tools"""
+        
+        # Merge task parameters with inputs
+        tool_params = {**task.parameters, **inputs}
+        
+        # Execute via tool router with retry
+        result = await self.retry_manager.execute_with_retry(
+            func=self.tool_router.route_and_execute,
+            task=task,
+            params=tool_params,
+            user_id=user_id,
+            tenant_id=tenant_id,
+            execution_id=execution_id
         )
         
-        # Gather inputs from dependencies
-        task_inputs = await self._gather_task_inputs(task, dag, execution_id)
+        return result
+    
+    async def _track_agent_performance(
+        self,
+        agent: BaseDomainAgent,
+        task: TaskNode,
+        result: Dict
+    ):
+        """Track agent performance metrics"""
         
-        # Find appropriate domain agent
-        agent = await self._select_agent(task)
+        agent_id = agent.agent_id
         
-        if not agent:
-            # No specific agent, use tool router directly
-            return await self._execute_with_tools(
-                task=task,
-                inputs=task_inputs,
-                user_id=user_id,
-                tenant_id=tenant_id,
-                execution_id=execution_id
-            )
+        if agent_id not in self.agent_performance:
+            self.agent_performance[agent_id] = {
+                "total_tasks": 0,
+                "successful_tasks": 0,
+                "failed_tasks": 0,
+                "total_duration": 0,
+                "tasks_by_type": {}
+            }
         
-        # Execute with domain agent
-        try:
-            result = await agent.execute(
-                task=task,
-                inputs=task_inputs,
-                context={
-                    "execution_id": execution_id,
-                    "user_id": user_id,
-                    "tenant_id": tenant_id,
-                    "dag_context": context
-                }
-            )
-            
-            # Store result in communication bus
-            await self.communication_bus.publish(
-                topic=f"task.{task.task_id}.completed",
-                message={
-                    "execution_id": execution_id,
-                    "task_id": task.task_id,
-                    "result": result
-                }
-            )
-            
-            return result
-            
-        except Exception as e:
-            logger.error(
-                f"Task execution failed: {str(e)}",
-                extra={
-                    "execution_id": execution_id,
-                    "task_id": task.task_id
-                }
-            )
-            
-            # Publish failure
-            await self.communication_bus.publish(
-                topic=f"task.{task.task_id}.failed",
-                message={
-                    "execution_id": execution_id,
-                    "task_id": task.task_id,
-                    "error": str(e)
-                }
-            )
-            
-            raise
+        perf = self.agent_performance[agent_id]
+        perf["total_tasks"] += 1
+        
+        if result.get("status") == "success":
+            perf["successful_tasks"] += 1
+        else:
+            perf["failed_tasks"] += 1
+        
+        perf["total_duration"] += result.get("duration_seconds", 0)
+        perf["success_rate"] = perf["successful_tasks"] / perf["total_tasks"] if perf["total_tasks"] > 0 else 0
+        
+        task_type = task.task_type.value
+        if task_type not in perf["tasks_by_type"]:
+            perf["tasks_by_type"][task_type] = 0
+        perf["tasks_by_type"][task_type] += 1
     
     async def _gather_task_inputs(
         self,
@@ -351,47 +488,6 @@ class AgentOrchestrator:
                         inputs[f"{dep_id}_detailed"] = bus_data
         
         return inputs
-    
-    async def _select_agent(self, task: TaskNode) -> Optional[Any]:
-        """Select appropriate domain agent for task"""
-        
-        # Match based on task type and capabilities
-        for agent_type, agent in self.domain_agents.items():
-            agent_capabilities = await agent.get_capabilities()
-            
-            # Check if agent can handle any required capability
-            if any(
-                cap in agent_capabilities
-                for cap in task.required_capabilities
-            ):
-                return agent
-        
-        return None
-    
-    async def _execute_with_tools(
-        self,
-        task: TaskNode,
-        inputs: Dict[str, Any],
-        user_id: str,
-        tenant_id: str,
-        execution_id: str
-    ) -> Dict[str, Any]:
-        """Execute task directly using tools"""
-        
-        # Merge task parameters with inputs
-        tool_params = {**task.parameters, **inputs}
-        
-        # Execute via tool router with retry
-        result = await self.retry_manager.execute_with_retry(
-            func=self.tool_router.route_and_execute,
-            task=task,
-            params=tool_params,
-            user_id=user_id,
-            tenant_id=tenant_id,
-            execution_id=execution_id
-        )
-        
-        return result
     
     async def _cleanup_execution(self, execution_id: str):
         """Clean up execution resources"""
@@ -448,3 +544,28 @@ class AgentOrchestrator:
         logger.info(f"Cancelled execution {execution_id}")
         
         return True
+    
+    async def get_agent_status(self, agent_type: Optional[str] = None) -> Dict:
+        """Get status of agents"""
+        
+        if agent_type:
+            agent = self.domain_agents.get(agent_type)
+            if agent:
+                return {
+                    "agent_type": agent_type,
+                    "status": "active",
+                    "capabilities": [c.value for c in agent.capabilities],
+                    "performance": self.agent_performance.get(agent.agent_id, {}),
+                    "config": agent.to_dict() if hasattr(agent, 'to_dict') else {}
+                }
+            return {"error": f"Agent {agent_type} not found"}
+        
+        # Return all agents
+        return {
+            agent_type: {
+                "capabilities": [c.value for c in agent.capabilities],
+                "performance": self.agent_performance.get(agent.agent_id, {}),
+                "config": agent.to_dict() if hasattr(agent, 'to_dict') else {}
+            }
+            for agent_type, agent in self.domain_agents.items()
+        }

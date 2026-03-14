@@ -1,0 +1,25 @@
+name: nuclei
+version: 3.1.0
+description: Vulnerability scanner
+capabilities:
+  - vuln_scan
+  - vulnerability_scan
+  - web_scan
+  - template_based
+image: eso-worker-nuclei:latest
+command: nuclei
+default_timeout: 1200
+cacheable: true
+cache_ttl: 600
+resource_requirements:
+  cpu: "1.0"
+  memory: "1Gi"
+rate_limits:
+  default: "5/minute"
+  enterprise: "50/minute"
+cost_per_minute: 0.02
+param_mapping:
+  target: "-u"
+  templates: "-t"
+  severity: "-severity"
+  rate_limit: "-rl"

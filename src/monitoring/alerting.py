@@ -2,6 +2,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 import asyncio
 import aiohttp
+from enum import Enum
 
 
 class AlertSeverity(str, Enum):

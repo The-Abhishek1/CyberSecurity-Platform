@@ -1,0 +1,24 @@
+name: gobuster
+version: 3.6.0
+description: Directory/file bruteforcing tool
+capabilities:
+  - directory_bruteforce
+  - dns_enumeration
+image: eso-worker-gobuster:latest
+command: gobuster
+default_timeout: 900
+cacheable: true
+cache_ttl: 3600
+resource_requirements:
+  cpu: "0.5"
+  memory: "512Mi"
+rate_limits:
+  default: "10/minute"
+  enterprise: "100/minute"
+cost_per_minute: 0.01
+param_mapping:
+  mode: null
+  url: "-u"
+  wordlist: "-w"
+  threads: "-t"
+  extensions: "-x"

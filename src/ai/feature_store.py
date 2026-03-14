@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import redis
 import json
-
+from src.core.config import get_settings
 
 class FeatureStore:
     """
@@ -25,6 +25,7 @@ class FeatureStore:
             port=settings.redis_port,
             decode_responses=True
         )
+        settings =  get_settings()
         
         # Feature definitions
         self.features: Dict[str, Dict] = {}

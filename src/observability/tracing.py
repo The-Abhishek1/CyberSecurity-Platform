@@ -8,6 +8,7 @@ from opentelemetry.trace import Status, StatusCode
 from opentelemetry.context import attach, detach
 
 from src.utils.logging import logger
+from contextlib import contextmanager
 
 
 class TracingManager:

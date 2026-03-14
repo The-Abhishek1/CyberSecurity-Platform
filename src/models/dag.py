@@ -17,16 +17,25 @@ class TaskStatus(str, Enum):
 
 
 class TaskType(str, Enum):
-    SCAN = "scan"
-    RECON = "reconnaissance"
-    EXPLOIT = "exploit"
-    ANALYSIS = "analysis"
-    REPORT = "report"
-    VALIDATION = "validation"
-    CUSTOM = "custom"
+    SCAN = "SCAN"
+    RECON = "RECON"
+    EXPLOIT = "EXPLOIT"
+    ANALYSIS = "ANALYSIS"
+    REPORT = "REPORT"
+    VALIDATION = "VALIDATION"
+    CUSTOM = "CUSTOM"
 
 
 class AgentCapability(str, Enum):
+    
+    # --- orchestration capabilities ---
+    PLANNING = "planning"
+    VERIFICATION = "verification"
+    EXECUTION = "execution"
+    VALIDATION = "validation"
+    REPORTING = "reporting"
+    EXPLOIT = "exploit"
+    
     NETWORK_SCAN = "network_scan"
     PORT_SCAN = "port_scan"
     VULN_SCAN = "vulnerability_scan"
@@ -39,7 +48,12 @@ class AgentCapability(str, Enum):
     CLOUD_SCAN = "cloud_scan"
     CONTAINER_SCAN = "container_scan"
     API_SCAN = "api_scan"
-
+    SERVICE_DETECTION = "service_detection"
+    OS_DETECTION = "os_detection"
+    VERSION_DETECTION = "version_detection"
+    DNS_ENUMERATION = "dns_enumeration"
+    SUBDOMAIN_ENUM = "subdomain_enum"
+    SQL_INJECTION = "sql_injection"
 
 class TaskNode(BaseModel):
     """Represents a single task node in the DAG"""

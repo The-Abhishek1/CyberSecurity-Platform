@@ -21,14 +21,16 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp, exclude_paths: Optional[List[str]] = None):
         super().__init__(app)
         self.exclude_paths = exclude_paths or [
+            "/",
             "/health",
             "/metrics",
             "/docs",
             "/redoc",
             "/openapi.json",
-            "/api/v1/auth/login",
-            "/api/v1/auth/register",
-            "/api/v1/auth/refresh",
+            "/auth/login",
+            "/auth/register",
+            "/auth/refresh",
+            "/hybrid/execute"
         ]
         self.security = HTTPBearer(auto_error=False)
     

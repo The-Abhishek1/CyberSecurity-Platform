@@ -31,7 +31,7 @@ class OpenAIClient(BaseLLMClient):
     """OpenAI API client"""
     
     def __init__(self, model_name: str = "gpt-4", api_key: Optional[str] = None):
-        super().__init__(model_name, api_key or settings.OPENAI_API_KEY)
+        super().__init__(model_name, api_key or settings.llm.openai_api_key)
         self.base_url = "https://api.openai.com/v1/chat/completions"
     
     async def generate(
@@ -68,7 +68,7 @@ class AnthropicClient(BaseLLMClient):
     """Anthropic Claude API client"""
     
     def __init__(self, model_name: str = "claude-3-opus-20240229", api_key: Optional[str] = None):
-        super().__init__(model_name, api_key or settings.ANTHROPIC_API_KEY)
+        super().__init__(model_name, api_key or settings.llm.anthropic_api_key)
         self.base_url = "https://api.anthropic.com/v1/messages"
     
     async def generate(
@@ -152,7 +152,7 @@ class LLMFactory:
     
     def __init__(self):
         self.clients = {}
-        self.default_provider = settings.LLM_PROVIDER or "openai"
+        self.default_provider = settings.llm.provider or "openai"
         
         logger.info(f"LLM Factory initialized with default provider: {self.default_provider}")
     
@@ -181,16 +181,16 @@ class LLMFactory:
         if provider == "openai":
             client = OpenAIClient(
                 model_name=model_name or "gpt-4",
-                api_key=kwargs.get("api_key", settings.OPENAI_API_KEY)
+                api_key=kwargs.get("api_key", settings.llm.openai_api_key)
             )
         elif provider == "anthropic":
             client = AnthropicClient(
                 model_name=model_name or "claude-3-opus-20240229",
-                api_key=kwargs.get("api_key", settings.ANTHROPIC_API_KEY)
+                api_key=kwargs.get("api_key", settings.llm.anthropic_api_key)
             )
         elif provider == "local":
             client = LocalLLMClient(
-                model_name=model_name or "llama2",
+                model_name=model_name or settings.llm.local_llm_model,
                 base_url=kwargs.get("base_url", "http://localhost:11434")
             )
         elif provider == "azure":
@@ -234,8 +234,8 @@ class LLMFactory:
         
         return AzureOpenAIClient(
             model_name=model_name or "gpt-4",
-            endpoint=kwargs.get("endpoint", settings.AZURE_OPENAI_ENDPOINT),
-            api_key=kwargs.get("api_key", settings.AZURE_OPENAI_KEY),
+            endpoint=kwargs.get("endpoint", settings.llm.azure_openai_endpoint),
+            api_key=kwargs.get("api_key", settings.llm.azure_openai_key),
             api_version=kwargs.get("api_version", "2024-02-15-preview")
         )
     

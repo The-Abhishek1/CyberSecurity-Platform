@@ -1,5 +1,5 @@
 from typing import Dict, Optional
-
+from src.utils.logging import logger
 
 class NetworkIsolation:
     """

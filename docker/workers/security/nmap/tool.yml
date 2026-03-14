@@ -1,0 +1,31 @@
+name: nmap
+version: 7.94
+description: Network discovery and security scanning tool
+capabilities:
+  - port_scan
+  - service_detection
+  - os_detection
+  - version_detection
+  - network_scan
+  - host_discovery
+image: eso-worker-nmap:latest
+command: nmap
+default_timeout: 600
+cacheable: true
+cache_ttl: 300
+resource_requirements:
+  cpu: "0.5"
+  memory: "512Mi"
+rate_limits:
+  default: "10/minute"
+  enterprise: "100/minute"
+cost_per_minute: 0.01
+param_mapping:
+  target: null
+  ports: "-p"
+  scan_type: "-s"
+  timing: "-T"
+  output_format: "-oX"
+  verbose: "-v"
+  os_detection: "-O"
+  version_detection: "-sV"

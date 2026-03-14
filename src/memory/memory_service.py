@@ -317,3 +317,71 @@ class MemoryService:
         )
         
         return results
+    
+    
+    async def store_knowledge(self, topic: str, content: str, metadata: Dict[str, Any] = None):
+        """
+        Store knowledge in memory for agent collaboration
+        """
+        logger.debug(f"Storing knowledge for topic: {topic}")
+        
+        # Store in vector DB for semantic search
+        if self.vector_store:
+            await self.vector_store.store(
+                text=content,
+                metadata={
+                    "topic": topic,
+                    "type": "knowledge",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    **(metadata or {})
+                }
+            )
+        
+        # Store in graph DB for relationship mapping
+        if self.graph_store:
+            await self.graph_store.add_knowledge_node(
+                topic=topic,
+                content=content[:100],  # Truncate for preview
+                metadata=metadata
+            )
+        
+        # Store in time-series for metrics
+        if self.time_series_store:
+            await self.time_series_store.record_event(
+                event_type="knowledge_stored",
+                tags={"topic": topic},
+                value=1
+            )
+            
+
+    async def semantic_search(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Search knowledge using semantic search
+        
+        Args:
+            query: Search query
+            limit: Maximum number of results
+        
+        Returns:
+            List of matching documents with scores
+        """
+        logger.debug(f"Semantic search for: {query}")
+        
+        if self.vector_store:
+            # Search in vector store
+            results = await self.vector_store.search(
+                query=query,
+                collection="knowledge",  # Search in knowledge collection
+                limit=limit
+            )
+            return results
+        
+        # Fallback: search in memory cache
+        results = []
+        for key, value in self.__dict__.get('_cache', {}).items():
+            if 'knowledge' in key and query.lower() in str(value).lower():
+                results.append(value)
+                if len(results) >= limit:
+                    break
+        
+        return results

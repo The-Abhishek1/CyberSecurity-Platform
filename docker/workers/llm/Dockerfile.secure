@@ -1,0 +1,60 @@
+# ============================================
+# LLM WORKER CONTAINER - Heavy LLM Libraries
+# Size: ~4-8GB
+# ============================================
+
+# Build stage
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    build-essential \
+    libffi-dev \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install poetry
+RUN pip install --no-cache-dir poetry==1.5.1
+
+# Copy dependency files
+COPY pyproject.toml poetry.lock ./
+
+# Install LLM dependencies
+RUN poetry config virtualenvs.create false \
+    && poetry install --no-interaction --no-ansi --no-root --only llm
+
+# Final image
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -m -u 1000 llmuser && chown -R llmuser:llmuser /app
+
+# Copy installed packages
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy LLM worker code
+COPY src/workers/llm/ ./src/workers/llm/
+COPY src/agents/planner/llm_factory.py ./src/agents/planner/
+COPY src/utils/ ./src/utils/
+
+# Security: Non-root user
+USER llmuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD ["curl", "-f", "http://localhost:8002/health"]
+
+# Run LLM worker
+CMD ["python", "-m", "src.workers.llm.worker"]

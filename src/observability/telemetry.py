@@ -9,7 +9,7 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.aiohttp_client import AIOHttpClientInstrumentor
+from opentelemetry.instrumentation.aiohttp_client import AioHttpClientInstrumentor
 from opentelemetry.instrumentation.redis import RedisInstrumentor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -96,7 +96,7 @@ class TelemetryManager:
         
         # Instrument libraries
         FastAPIInstrumentor.instrument()
-        AIOHttpClientInstrumentor.instrument()
+        AioHttpClientInstrumentor.instrument()
         RedisInstrumentor.instrument()
         
         logger.info("Tracing initialized")

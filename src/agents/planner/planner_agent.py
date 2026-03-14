@@ -49,6 +49,7 @@ class PlannerAgent(BaseAgent):
     
     async def create_plan(
         self,
+        process_id: str,
         goal: str,
         target: Optional[str],
         user_id: str,
@@ -120,6 +121,7 @@ class PlannerAgent(BaseAgent):
             
             # Parse response into DAG
             dag = await self._parse_llm_response(
+                process_id=process_id,
                 response=llm_response,
                 goal=goal,
                 target=target,
@@ -228,6 +230,7 @@ class PlannerAgent(BaseAgent):
     
     async def _parse_llm_response(
         self,
+        process_id: str,
         response: str,
         goal: str,
         target: Optional[str],
@@ -250,6 +253,7 @@ class PlannerAgent(BaseAgent):
             
             # Create DAG
             dag = DAG(
+                process_id= process_id,
                 goal=goal,
                 target=target,
                 tags=parameters.get("tags", {}) if parameters else {}
@@ -260,7 +264,7 @@ class PlannerAgent(BaseAgent):
                 task = TaskNode(
                     name=task_data["name"],
                     description=task_data.get("description"),
-                    task_type=TaskType(task_data.get("type", "custom")),
+                    task_type=TaskType(task_data.get("type", "custom").upper()),
                     required_capabilities=[
                         AgentCapability(cap) for cap in task_data.get("capabilities", [])
                     ],
@@ -285,10 +289,11 @@ class PlannerAgent(BaseAgent):
             logger.debug(f"Raw response: {response[:500]}")
             
             # Fallback: Create simple default DAG
-            return await self._create_fallback_dag(goal, target, parameters)
+            return await self._create_fallback_dag(process_id,goal, target, parameters)
     
     async def _create_fallback_dag(
         self,
+        process_id: str,
         goal: str,
         target: Optional[str],
         parameters: Optional[Dict[str, Any]]
@@ -296,6 +301,7 @@ class PlannerAgent(BaseAgent):
         """Create fallback DAG when parsing fails"""
         
         dag = DAG(
+            process_id= process_id,
             goal=goal,
             target=target,
             tags=parameters.get("tags", {}) if parameters else {}
@@ -378,3 +384,30 @@ class PlannerAgent(BaseAgent):
         """Optimize DAG for parallel execution"""
         # Implementation would group tasks into parallel batches
         return dag
+    
+    async def execute(self, task: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Required implementation from BaseAgent.
+        For planner agent this generates a task plan.
+        """
+
+        try:
+            await self.pre_execution_hook(task)
+
+            plan = await self.create_plan(
+                goal=task["parameters"].get("goal"),
+                context=context
+            )
+
+            result = {
+                "status": "success",
+                "plan": plan
+            }
+
+            await self.post_execution_hook(task, result)
+
+            return result
+
+        except Exception as e:
+            await self.error_hook(task, e)
+            raise

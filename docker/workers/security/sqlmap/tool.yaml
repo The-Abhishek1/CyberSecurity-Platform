@@ -1,0 +1,24 @@
+name: sqlmap
+version: 1.7
+description: SQL injection automation tool
+capabilities:
+  - sql_injection
+  - database_exploit
+image: eso-worker-sqlmap:latest
+command: sqlmap
+default_timeout: 1800
+cacheable: false
+resource_requirements:
+  cpu: "1.0"
+  memory: "2Gi"
+rate_limits:
+  default: "2/minute"
+  enterprise: "20/minute"
+cost_per_minute: 0.05
+param_mapping:
+  url: "-u"
+  data: "--data"
+  method: "--method"
+  level: "--level"
+  risk: "--risk"
+  threads: "--threads"

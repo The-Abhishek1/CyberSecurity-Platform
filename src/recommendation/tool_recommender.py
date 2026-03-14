@@ -1,7 +1,8 @@
 from typing import Dict, List, Any, Optional
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-
+from src.utils.logging import logger
+from datetime import datetime
 
 class ToolRecommender:
     """
@@ -101,19 +102,25 @@ class ToolRecommender:
     ) -> float:
         """Get historical success rate for tool in similar contexts"""
         
-        # Query memory for similar executions with this tool
-        similar = await self.memory_service.find_similar_executions(
-            context=context,
-            tool=tool_name,
-            limit=100
+        # Use find_similar_tasks instead of find_similar_executions
+        similar = await self.memory_service.find_similar_tasks(
+            goal=context.get("goal", ""),
+            target=context.get("target", ""),
+            limit=50
         )
         
         if not similar:
             return 0.5  # Default
         
+        # Filter for this specific tool
+        tool_similar = [s for s in similar if s.get("tool_used") == tool_name]
+        
+        if not tool_similar:
+            return 0.5
+        
         # Calculate success rate
-        successes = sum(1 for s in similar if s.get("status") == "success")
-        return successes / len(similar)
+        successes = sum(1 for s in tool_similar if s.get("status") == "success")
+        return successes / len(tool_similar)
     
     async def _get_available_tools(self, context: Dict) -> List[Dict]:
         """Get available tools for context"""

@@ -1,0 +1,414 @@
+
+
+┌─────────────────────────────────────────────────────────────────┐
+│                         USER (REST API)                          │
+│  POST /hybrid/execute {"goal": "Scan example.com for vulns"}    │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      API LAYER (FastAPI)                         │
+│  • Authentication/Authorization                                  │
+│  • Rate limiting                                                 │
+│  • Request validation                                            │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      HYBRID SCHEDULER                            │
+│  • Creates process ID & DAG                                      │
+│  • Creates TaskContext                                           │
+│  • Calls Planner Agent                                           │
+│  • Manages execution lifecycle                                   │
+│  • Tracks budgets & quotas                                       │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        PLANNER AGENT                             │
+│  • Uses configured LLM (local/cloud)                             │
+│  • Queries Memory System for similar tasks                       │
+│  • Decomposes goal into task DAG                                 │
+│  • Determines dependencies & parallelism                         │
+│  • Returns process DAG with all enterprise fields                │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      MEMORY & KNOWLEDGE SYSTEM                   │
+│  • Vector DB - Semantic search                                   │
+│  • Graph DB - Knowledge graph                                    │
+│  • Time Series DB - Metrics                                      │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      VERIFIER AGENT                              │
+│  • Validates planner output                                      │
+│  • Checks for cycles in DAG                                      │
+│  • Verifies resource availability                                │
+│  • Validates agent capabilities vs tasks                         │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      EXECUTION DAG                               │
+│  ┌─────────┐     ┌─────────┐     ┌─────────┐                   │
+│  │ Task A  │────▶│ Task B  │────▶│ Task C  │                   │
+│  └─────────┘     └─────────┘     └─────────┘                   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      AGENT ORCHESTRATOR                          │
+│  • Maps DAG nodes to agents                                      │
+│  • Handles agent communication                                   │
+│  • Manages parallel execution                                    │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    DOMAIN AGENT EXECUTION                         │
+│  • Agent receives task node                                       │
+│  • Queries Memory System                                          │
+│  • Agent THINKS using LLM                                         │
+│  • Agent requests TOOL ROUTER                                     │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      TOOL ROUTER ⭐ NEW                           │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  Responsibilities:                                         │  │
+│  │  • Tool selection based on capability                      │  │
+│  │  • Rate limiting per user/tool                             │  │
+│  │  • Tool caching for repeated calls                         │  │
+│  │  • Load balancing across workers                           │  │
+│  │  • Cost tracking & budget enforcement                      │  │
+│  │  • Tool version management                                 │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    WORKER ISOLATION ⭐ NEW                        │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  Docker Container Pool                                     │  │
+│  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐      │  │
+│  │  │ Nmap Worker  │ │ SQLMap Worker│ │ Nuclei Worker│      │  │
+│  │  │ Container    │ │ Container    │ │ Container    │      │  │
+│  │  └──────────────┘ └──────────────┘ └──────────────┘      │  │
+│  │                                                           │  │
+│  │  • Each tool runs in isolated container                   │  │
+│  │  • Resource limits (CPU/Memory) enforced                  │  │
+│  │  • Network isolation                                       │  │
+│  │  • Automatic cleanup after execution                      │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    RETRY & RECOVERY SYSTEM ⭐ NEW                 │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  Retry Strategies:                                         │  │
+│  │  • Simple retry (n times)                                  │  │
+│  │  • Exponential backoff                                     │  │
+│  │  • Jitter to avoid thundering herd                        │  │
+│  │                                                           │  │
+│  │  Recovery Strategies:                                      │  │
+│  │  • Alternative tool (if primary fails)                    │  │
+│  │  • Different parameters                                    │  │
+│  │  • Agent re-planning                                       │  │
+│  │  • Human escalation (if critical)                         │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    OBSERVABILITY SYSTEM                          │
+│  • OpenTelemetry - Traces                                       │
+│  • Prometheus - Metrics                                         │
+│  • Grafana - Dashboards                                         │
+│  • Loki - Logs                                                  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    FINAL RESPONSE                                │
+│  • Process completed successfully                                │
+│  • DAG execution summary                                        │
+│  • Artifacts and findings                                       │
+│  • Trace ID for debugging                                       │
+└─────────────────────────────────────────────────────────────────┘
+
+
+📋 Complete System Flow
+1. When a User Makes a Request
+text
+User Request → API Gateway → Authentication → Route to Handler → Execute → Return Response
+2. File-by-File Breakdown
+Entry Point - src/app.py
+python
+# This is where everything starts
+# It creates the FastAPI app and ties everything together
+API Layer - src/api/
+text
+src/api/
+├── routes/v1/          # All API endpoints
+│   ├── hybrid.py       # Main execution endpoints (/execute, /status, /list)
+│   ├── health.py       # Health check endpoints
+│   └── metrics.py      # Metrics endpoints
+├── middleware/         # Request processors
+│   ├── auth.py         # Checks if user is authenticated
+│   ├── rate_limit.py   # Prevents too many requests
+│   └── audit.py        # Logs all requests
+├── models/             # Data structures
+│   ├── request.py      # What the API expects
+│   └── response.py     # What the API returns
+└── dependencies.py     # Helper functions for routes
+When You Call /api/v1/hybrid/execute:
+python
+# 1. Request hits hybrid.py
+@router.post("/execute")
+async def execute_goal(...):
+    # 2. Creates a process_id
+    process_id = f"proc_{uuid.uuid4().hex[:12]}"
+    
+    # 3. Queues it for background processing
+    background_tasks.add_task(process_hybrid_execution, process_id, ...)
+    
+    # 4. Returns immediately with process_id
+    return {"process_id": process_id, "status": "pending"}
+Background Processing Flow:
+text
+process_hybrid_execution() [in hybrid.py]
+    ↓
+scheduler.schedule_execution() [in hybrid_scheduler.py]
+    ↓
+planner_agent.create_plan() [in planner_agent.py]
+    ↓
+verifier_agent.validate_dag() [in verifier_agent.py]
+    ↓
+orchestrator.execute_dag() [in agent_orchestrator.py]
+    ↓
+tool_router.route_and_execute() [in tool_router.py]
+    ↓
+worker_pool.execute() [in worker_pool.py]
+    ↓
+Result stored in memory_service [in memory_service.py]
+3. What Each Major File Does
+Core Files (src/core/)
+config.py - All configuration settings (database, API keys, etc.)
+
+exceptions.py - Custom error types
+
+security.py - Password hashing, JWT tokens, encryption
+
+Scheduler (src/scheduler/)
+hybrid_scheduler.py - Main scheduler that manages executions
+
+lifecycle_manager.py - Tracks execution states (pending → running → completed)
+
+budget_tracker.py - Monitors costs
+
+quota_manager.py - Enforces usage limits per tenant
+
+Agents (src/agents/)
+planner_agent.py - Breaks down goals into tasks
+
+verifier_agent.py - Checks if the plan makes sense
+
+Memory (src/memory/)
+memory_service.py - Stores and retrieves past executions
+
+vector_store.py - For semantic search (find similar tasks)
+
+graph_store.py - For relationships between entities
+
+Orchestrator (src/orchestrator/)
+agent_orchestrator.py - Runs tasks in parallel
+
+state_manager.py - Keeps track of running tasks
+
+Tools (src/tools/)
+tool_router.py - Decides which tool to use (nmap, nuclei, etc.)
+
+tool_registry.py - List of available tools
+
+Workers (src/workers/)
+worker_pool.py - Manages Docker containers
+
+container_manager.py - Creates/stops containers
+
+4. Data Flow Example
+text
+User says: "Scan example.com"
+
+1. hybrid.py receives request
+2. Creates process_id = "proc_abc123"
+3. Scheduler starts planning
+4. Planner creates tasks:
+   - Task 1: Port scan with nmap
+   - Task 2: Vulnerability scan with nuclei
+5. Verifier checks if possible
+6. Orchestrator runs tasks in parallel
+7. Tool router picks nmap for task 1
+8. Worker pool runs nmap in container
+9. Results saved to memory
+10. Status updates available via /status/proc_abc123
+5. Key Points to Remember
+Everything is modular - Each directory has a single responsibility
+
+Files follow the flow - Request → API → Scheduler → Agents → Tools → Workers
+
+State is tracked - Every execution has a status you can check
+
+Everything is logged - Check logs/ directory
+
+6. How to Trace a Request
+bash
+# 1. Start the app
+uvicorn src.app:app --reload
+
+# 2. Make a request
+curl -X POST http://localhost:8000/api/v1/hybrid/execute?goal=test
+
+# 3. Watch the logs - you'll see:
+# - Request received
+# - Process ID created
+# - Background task started
+# - Planning phase
+# - Execution phase
+# - Completion
+
+
+
+📁 Infrastructure & Deployment Directories
+alembic/ - Database Migrations
+python
+# Manages database schema changes over time
+alembic/
+├── env.py          # Database connection configuration
+└── versions/       # Migration files (e.g., 001_initial.py)
+Purpose: When you change your database structure, Alembic creates migration files so you can upgrade/downgrade safely.
+
+docker/ - Container Configuration
+text
+docker/
+├── api/
+│   └── Dockerfile           # How to build the API container
+├── postgres/
+│   └── init/                # SQL scripts to initialize database
+├── workers/
+│   ├── base/                 # Base worker image
+│   │   └── Dockerfile
+│   └── nmap/                 # Nmap-specific worker
+│       ├── Dockerfile
+│       └── entrypoint.sh     # Script that runs when container starts
+Purpose: Defines how to package your application into Docker containers for consistent deployment.
+
+infrastructure/ - Production Deployment Configs
+text
+infrastructure/
+├── kubernetes/               # Kubernetes configurations
+│   ├── base/                 # Base K8s manifests
+│   │   ├── deployment.yaml   # How to deploy the API
+│   │   └── worker.yaml       # How to deploy workers
+│   └── policies/             # Security policies
+│       └── require-labels.yaml # OPA/Gatekeeper policies
+├── monitoring/                # Monitoring stack
+│   ├── grafana/              # Grafana dashboards
+│   │   └── dashboards/
+│   │       └── api-dashboard.json
+│   └── prometheus/           # Prometheus configs
+│       ├── alerts/
+│       │   └── service_alerts.yml
+│       └── prometheus.yml
+├── service-mesh/              # Service mesh (Istio)
+│   └── istio/
+│       └── gateway.yaml      # Traffic routing rules
+└── terraform/                 # Infrastructure as Code
+    ├── environments/          # Different environments
+    │   ├── dr/                # Disaster recovery
+    │   │   └── main.tf
+    │   └── prod/              # Production
+    │       └── main.tf
+    └── modules/               # Reusable Terraform modules
+        └── kubernetes/
+            ├── main.tf
+            └── variables.tf
+Purpose: All the files needed to deploy to production on Kubernetes with monitoring, security, and multi-region support.
+
+scripts/ - Automation Scripts
+text
+scripts/
+├── backup/
+│   └── database-backup.sh    # Automated database backups
+├── chaos-engineering/
+│   └── run-chaos.sh          # Chaos testing scripts
+├── deployment/
+│   └── deploy.sh              # Deployment automation
+├── disaster-recovery/
+│   └── failover.sh            # Failover to DR region
+└── testing/
+    └── smoke-test.sh          # Quick system verification
+Purpose: Automates common operations like backups, deployments, and testing.
+
+🔄 How They All Work Together
+Development Flow:
+You write code in src/
+
+docker/ files package it into containers
+
+alembic/ manages database changes
+
+You test locally with docker-compose
+
+Deployment Flow:
+terraform/ provisions cloud infrastructure
+
+kubernetes/ deploys your containers
+
+monitoring/ sets up Prometheus/Grafana
+
+service-mesh/ configures traffic routing
+
+Operations Flow:
+scripts/backup/ runs daily backups
+
+scripts/monitoring/ checks system health
+
+scripts/chaos-engineering/ tests resilience
+
+scripts/disaster-recovery/ handles failures
+
+🎯 Why Each Directory Exists
+Directory	Purpose	When You Need It
+alembic/	Database version control	When changing database schema
+docker/	Container packaging	When building/deploying
+infrastructure/kubernetes/	Production deployment	When deploying to K8s
+infrastructure/monitoring/	System observability	When monitoring production
+infrastructure/terraform/	Cloud infrastructure	When setting up cloud resources
+scripts/	Automation	Daily operations
+📝 Simple Example Workflow
+bash
+# 1. You make code changes in src/
+# 2. You need to update the database
+alembic revision --autogenerate -m "add new table"
+alembic upgrade head
+
+# 3. You want to deploy to production
+cd infrastructure/terraform/environments/prod
+terraform apply  # Creates cloud resources
+
+# 4. Deploy your app
+kubectl apply -f infrastructure/kubernetes/base/
+
+# 5. Monitor it
+# Check Grafana at http://monitoring:3000
+
+# 6. Backup database daily
+./scripts/backup/database-backup.sh
+
+# 7. Test resilience
+./scripts/chaos-engineering/run-chaos.sh

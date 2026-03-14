@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import json
 import hashlib
 from datetime import datetime, timedelta

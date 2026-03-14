@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 import json
-
+from enum import Enum
 
 class ComplianceFramework(str, Enum):
     SOC2 = "soc2"

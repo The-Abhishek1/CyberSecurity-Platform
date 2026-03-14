@@ -1,7 +1,7 @@
 from typing import Dict, List, Any, Optional
 import numpy as np
 from sklearn.model_selection import ParameterGrid
-
+from src.utils.logging import logger
 
 class ParameterOptimizer:
     """

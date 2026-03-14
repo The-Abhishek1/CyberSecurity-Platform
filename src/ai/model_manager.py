@@ -9,6 +9,7 @@ import mlflow
 import tensorflow as tf
 from sklearn.base import BaseEstimator
 import xgboost as xgb
+from enum import Enum
 
 from src.core.config import get_settings
 from src.utils.logging import logger

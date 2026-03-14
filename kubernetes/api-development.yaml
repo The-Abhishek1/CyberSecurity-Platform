@@ -1,176 +1,55 @@
-# kubernetes/api-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: security-orchestrator-api
+  name: ml-worker
   namespace: security
-  labels:
-    app: security-orchestrator
-    component: api
-    version: v1
 spec:
-  replicas: 3
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
+  replicas: 2
   selector:
     matchLabels:
       app: security-orchestrator
-      component: api
+      component: ml-worker
   template:
     metadata:
       labels:
         app: security-orchestrator
-        component: api
-        version: v1
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "8000"
-        prometheus.io/path: "/api/v1/metrics"
+        component: ml-worker
     spec:
-      serviceAccountName: security-orchestrator
       containers:
-      - name: api
-        image: security-orchestrator/api:latest
-        imagePullPolicy: Always
+      - name: ml-worker
+        image: security-orchestrator/ml-worker:latest
         ports:
-        - containerPort: 8000
-          name: http
-        - containerPort: 9090
-          name: metrics
+        - containerPort: 8001
         env:
-        - name: ENVIRONMENT
-          valueFrom:
-            configMapKeyRef:
-              name: orchestrator-config
-              key: environment
-        - name: POSTGRES_DSN
-          valueFrom:
-            secretKeyRef:
-              name: orchestrator-secrets
-              key: postgres-dsn
         - name: REDIS_DSN
-          valueFrom:
-            secretKeyRef:
-              name: orchestrator-secrets
-              key: redis-dsn
-        - name: JWT_SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: orchestrator-secrets
-              key: jwt-secret
-        - name: FIELD_ENCRYPTION_KEY
-          valueFrom:
-            secretKeyRef:
-              name: orchestrator-secrets
-              key: encryption-key
-        - name: RATE_LIMIT_REDIS_URL
           valueFrom:
             secretKeyRef:
               name: orchestrator-secrets
               key: redis-dsn
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
-            memory: "1Gi"
+            memory: "2Gi"
             cpu: "1000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
         livenessProbe:
           httpGet:
-            path: /api/v1/health
-            port: 8000
+            path: /health
+            port: 8001
           initialDelaySeconds: 60
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /api/v1/health
-            port: 8000
-          initialDelaySeconds: 30
-          periodSeconds: 5
-          timeoutSeconds: 3
-        volumeMounts:
-        - name: config
-          mountPath: /app/config
-        - name: logs
-          mountPath: /var/log
-      volumes:
-      - name: config
-        configMap:
-          name: orchestrator-config
-      - name: logs
-        emptyDir: {}
+          periodSeconds: 30
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: security-orchestrator-api
+  name: ml-worker
   namespace: security
-  labels:
-    app: security-orchestrator
-    component: api
 spec:
   selector:
     app: security-orchestrator
-    component: api
+    component: ml-worker
   ports:
-  - name: http
-    port: 80
-    targetPort: 8000
-  - name: metrics
-    port: 9090
-    targetPort: 9090
+  - port: 8001
+    targetPort: 8001
   type: ClusterIP
----
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: security-orchestrator-api
-  namespace: security
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: security-orchestrator-api
-  minReplicas: 3
-  maxReplicas: 10
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
-  - type: Object
-    object:
-      metric:
-        name: http_requests_per_second
-      describedObject:
-        apiVersion: v1
-        kind: Service
-        name: security-orchestrator-api
-      target:
-        type: Value
-        averageValue: 1000
----
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: security-orchestrator-api
-  namespace: security
-spec:
-  minAvailable: 2
-  selector:
-    matchLabels:
-      app: security-orchestrator
-      component: api

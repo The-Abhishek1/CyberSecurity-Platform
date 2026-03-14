@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 from collections import defaultdict
-
+from src.utils.logging import logger
 
 class UsageAggregator:
     """

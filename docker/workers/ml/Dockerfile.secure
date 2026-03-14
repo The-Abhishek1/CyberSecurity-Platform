@@ -1,0 +1,61 @@
+# ============================================
+# ML WORKER CONTAINER - Heavy ML Libraries
+# Size: ~3-4GB
+# ============================================
+
+# Build stage
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+
+# Install build dependencies for ML
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    build-essential \
+    libffi-dev \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install poetry
+RUN pip install --no-cache-dir poetry==1.5.1
+
+# Copy dependency files
+COPY pyproject.toml poetry.lock ./
+
+# Install ML dependencies
+RUN poetry config virtualenvs.create false \
+    && poetry install --no-interaction --no-ansi --no-root --only ml
+
+# Final image - using slim for ML (distroless doesn't work well with ML)
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -m -u 1000 mluser && chown -R mluser:mluser /app
+
+# Copy installed packages
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy ML worker code
+COPY src/workers/ml/ ./src/workers/ml/
+COPY src/models/ ./src/models/
+COPY src/utils/ ./src/utils/
+
+# Security: Non-root user
+USER mluser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD ["curl", "-f", "http://localhost:8001/health"]
+
+# Run ML worker
+CMD ["python", "-m", "src.workers.ml.worker"]

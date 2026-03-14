@@ -1,0 +1,31 @@
+# In a new terminal, test the API:
+
+# 1. Root endpoint
+curl http://localhost:8000/
+
+# 2. Health check
+curl http://localhost:8000/health
+
+# 3. Execute a security scan (mock)
+curl -X POST "http://localhost:8000/api/v1/execute?goal=Scan%20example.com&target=example.com"
+
+# 4. Check execution status (use the process_id from above)
+curl http://localhost:8000/api/v1/status/proc_abc123
+
+# 5. List all executions
+curl http://localhost:8000/api/v1/list
+
+# 6. Create a tenant
+curl -X POST "http://localhost:8000/api/v1/tenants?name=MyCompany&tier=enterprise"
+
+# 7. Create a worker
+curl -X POST "http://localhost:8000/api/v1/workers/create?tool=nmap"
+
+# 8. Test alert system
+curl -X POST http://localhost:8000/api/v1/alerts/test
+
+# 9. Register an AI model
+curl -X POST "http://localhost:8000/api/v1/models/register?name=vuln-predictor&model_type=classification"
+
+# 10. Make a prediction
+curl "http://localhost:8000/api/v1/models/predict/model_test?features=0.5,0.2,0.8"

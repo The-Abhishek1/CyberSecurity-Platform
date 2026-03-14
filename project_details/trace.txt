@@ -1,0 +1,9 @@
+1. API receives request → hybrid.py (line 81)
+2. Creates process_id → "proc_abc123"
+3. Adds background task → process_hybrid_execution()
+4. Scheduler called → hybrid_scheduler.py (line 96)
+5. Planner creates DAG → planner_agent.py (line 115)
+6. Verifier validates → verifier_agent.py (line 58)
+7. Orchestrator executes → agent_orchestrator.py (line 92)
+8. Tool router selects tool → tool_router.py (line 98)
+9. Worker pool "executes" → worker_pool.py (line 71) - **SIMULATED**

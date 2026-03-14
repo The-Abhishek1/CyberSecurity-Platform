@@ -2,7 +2,7 @@ import logging
 import json
 import uuid
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from pythonjsonlogger import jsonlogger
 
 from src.core.config import get_settings

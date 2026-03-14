@@ -1,0 +1,35 @@
+┌─────────────────────────────────────────────────────────────────┐
+│                      WORKFLOW ENGINE                            │
+│  (Planning a new security scan)                                 │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                 1. TOOL RECOMMENDER (Strategic)                 │
+│  • "Based on your goal 'web app pentest', I recommend using     │
+│    nuclei for vuln scanning and nmap for recon"                 │
+│  • Uses historical data, ML models, and cost analysis           │
+│  • Output: ["nmap", "nuclei", "sqlmap"]                         │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     2. TASK CREATION                            │
+│  Create tasks with selected tools                               │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              3. BASE DOMAIN AGENT (Tactical)                    │
+│  • During execution, may need to choose between tools           │
+│  • "Hmm, nmap is busy, let me use masscan instead"              │
+│  • Uses real-time context, current load, confidence scores      │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              4. PARAMETER OPTIMIZER (Fine-tuning)               │
+│  • "For this specific target, use these optimized params"       │
+│  • "Port scan should use timing T4, focus on top 1000 ports"    │
+│  • Uses historical performance, Bayesian optimization           │
+└─────────────────────────────────────────────────────────────────┘
